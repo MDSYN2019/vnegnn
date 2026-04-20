@@ -1,11 +1,26 @@
 from pathlib import Path
 
-import nglview as nv
 import pandas as pd
-from nglview.shape import Shape
+
+
+def _load_nglview_or_raise():
+    """Load nglview lazily so non-visual notebook cells can run without it."""
+    try:
+        import nglview as nv
+        from nglview.shape import Shape
+    except ImportError as exc:
+        raise ImportError(
+            'nglview is required for 3D rendering. Install it with: pip install nglview '
+            'and enable widgets for your environment.'
+        ) from exc
+
+    return nv, Shape
 
 
 def render_protein(protein_name: str, df: pd.DataFrame, dataset_path: Path):
+    """Render a protein, ligands, and predicted binding site centers in an NGL widget."""
+    nv, Shape = _load_nglview_or_raise()
+
     complex_path = Path(f"{dataset_path}/{protein_name}")
     pdb_file = complex_path / "protein.pdb"
     ligands = [lig for lig in complex_path.glob("ligand_*.pdb")]
@@ -19,7 +34,7 @@ def render_protein(protein_name: str, df: pd.DataFrame, dataset_path: Path):
     view.clear_representations()
     view.add_representation(
         "surface", selection="protein", opacity=0.3, color="lightblue"
-    )  # noqa: E501
+    )
     view.add_representation("cartoon", selection="protein", color="secondary structure")
 
     for ligand in ligands:
@@ -31,23 +46,15 @@ def render_protein(protein_name: str, df: pd.DataFrame, dataset_path: Path):
     p = df.loc[lambda x: x["protein_name"] == protein_name].reset_index(drop=True)
     for i, row in p.iterrows():
         confidence = (
-            round(row["confidence_0"], 3) if hasattr(row, "confidence_0") else "n"
+            round(row["confidence_0"], 3) if hasattr(row, "confidence_0") else "n/a"
         )
         shape.add_sphere(
-            [row["x"], row["y"], row["z"]], [1, 0, 0], 1.5, f"{str(confidence)}"
-        )  # red
+            [row["x"], row["y"], row["z"]],
+            [1, 0, 0],
+            0.8,
+            f"Prediction {i} (conf={confidence})",
+        )
 
-    if hasattr(row, "vn_initial_pos_0") and row["vn_initial_pos_0"] is not None:
-        for i, row in p.iterrows():
-            shape.add_sphere(
-                [
-                    row["vn_initial_pos_0"],
-                    row["vn_initial_pos_1"],
-                    row["vn_initial_pos_2"],
-                ],
-                [0, 1, 0],
-                1,
-                "vn_initial_pos",
-            )
+    view.add_component(shape)
 
     return view
