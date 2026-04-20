@@ -208,6 +208,118 @@ The following shows the structure of the source code. The training pipeline is s
 
 
 
+## Code walkthrough (what each part does)
+
+This section gives a practical “map” of the repository so you can quickly understand where logic lives and how data flows from raw proteins to predictions.
+
+### 1) End-to-end flow
+
+1. **Prepare raw structural data** with scripts in `scripts/` (extract binding labels, build features/embeddings, optional surface preprocessing for Equipocket).
+2. **Build graph datasets** via classes in `src/datasets/` (protein atoms/residues as nodes, neighborhood edges, labels).
+3. **Instantiate experiment config** with Hydra from `configs/` (data/model/trainer/logger/callback composition).
+4. **Train/evaluate through Lightning wrappers** in `src/wrappers/`, called by `src/train.py` and `src/eval.py`.
+5. **Compute metrics and losses** in `src/modules/` and log results/checkpoints.
+
+---
+
+### 2) Entry points and orchestration
+
+- `src/train.py` — Main training entrypoint. Loads Hydra config, seeds and utility setup, instantiates datamodule/model/wrapper/trainer, then runs fit.
+- `src/eval.py` — Main evaluation entrypoint. Loads config and model checkpoint or W&B run id, runs validation/test inference and metric logging.
+- `Makefile` — Convenience commands for common tasks (environment/setup/training shortcuts).
+- `pyproject.toml` / `environment.yaml` — Python packaging and dependency/runtime environment definitions.
+
+---
+
+### 3) Data preparation scripts (`scripts/`)
+
+- `process_data.sh` — Dataset preprocessing pipeline launcher for VN-EGNN data.
+- `process_data_equipocket.sh` — Preprocessing pipeline for Equipocket baseline (including surface generation workflow).
+- `extract_binding_info.py` — Reads protein/ligand structures and derives binding-site supervision metadata.
+- `extract_binding_atoms.py` — Extracts/marks atom-level binding annotations used to create labels.
+- `protein_feature.py` — Builds protein feature tensors used by downstream graph datasets.
+- `generate_esm_embeddings.py` — Generates ESM-based sequence embeddings used as node features.
+
+---
+
+### 4) Config system (`configs/`)
+
+Hydra composes runs from modular config groups:
+
+- `train.yaml` / `eval.yaml` — Top-level run composition for training/evaluation.
+- `configs/experiment/*.yaml` — Experiment presets (VN-EGNN, Equipocket, PDBBind2020, GRASP variants).
+- `configs/data/*.yaml` — Dataset choice, paths, batch sizes, transforms/splits.
+- `configs/model/*.yaml` — Model architecture hyperparameters.
+- `configs/trainer/*.yaml` — Lightning trainer settings (devices, precision, epochs).
+- `configs/callbacks/*.yaml` — Checkpointing, early stopping, LR monitor/schedulers, memory/progress callbacks.
+- `configs/logger/wandb.yaml` — Weights & Biases logging setup.
+- `configs/paths/default.yaml` / `configs/hydra/default.yaml` / `configs/extras/default.yaml` — Runtime path handling, Hydra behavior, and extra quality-of-life settings.
+
+---
+
+### 5) Datasets (`src/datasets/`)
+
+- `binding_dataset.py` — Core dataset for binding-site learning tasks. Handles loading processed structures/labels and building graph-ready samples.
+- `equipocket_dataset.py` — Dataset variant specialized for Equipocket baseline inputs.
+- `utils.py` — Shared dataset helpers (parsing, featurization helpers, split support).
+
+---
+
+### 6) Models (`src/models/`)
+
+#### VN-EGNN (`src/models/vnegnn/`)
+- `vnegnn.py` — Main VN-EGNN architecture: equivariant message passing with virtual-node mechanism for improved long-range context.
+- `aggregation.py` — Aggregation/readout blocks used in VN-EGNN layers.
+- `utils.py` — VN-EGNN-specific helper methods.
+
+#### Equipocket baseline (`src/models/equipocket/`)
+- `equipocket.py` — Main Equipocket model definition.
+- `surface_egnn.py` — Surface-based EGNN components.
+- `egnn_clean.py` — Cleaner/minimal EGNN building blocks reused by baseline variants.
+- `baseline_models.py` — Additional baseline architectures and model wrappers.
+
+---
+
+### 7) Training/evaluation modules (`src/modules/`)
+
+- `losses.py` — Objective functions used during optimization.
+- `metrics.py` — Evaluation metrics for binding-site prediction quality.
+- `callbacks.py` — Custom Lightning callback logic.
+- `schedulers.py` — Learning-rate schedule utilities.
+- `ema.py` — Exponential Moving Average parameter tracking.
+- `cluster.py` — Post-processing clustering/grouping utilities for predicted sites.
+
+---
+
+### 8) Lightning wrappers (`src/wrappers/`)
+
+Wrappers connect model forward passes with training/validation/test step logic and optimization setup:
+
+- `base.py` — Shared wrapper functionality (common logging/step behavior).
+- `bindingsites.py` — VN-EGNN task wrapper.
+- `equipocket.py` — Equipocket task wrapper.
+
+---
+
+### 9) Shared utilities (`src/utils/`)
+
+- `graph.py` — Graph construction/manipulation helpers.
+- `protein.py` — Protein structure utilities (coordinates, parsing-related helpers).
+- `tensor_utils.py` / `torch_utils.py` — Tensor/PyTorch helper functions.
+- `constants.py` — Shared constants and categorical definitions.
+- `instantiators.py` — Hydra object-instantiation utilities.
+- `logging_utils.py` / `pylogger.py` / `rich_utils.py` — Logging and pretty console output helpers.
+- `misc.py` / `utils.py` — Generic utility helpers used across modules.
+
+---
+
+### 10) Notebooks, examples, and visuals
+
+- `notebooks/bindingsite/analyse_preds.ipynb` — Interactive analysis of model predictions.
+- `notebooks/notebook_setup.py`, `notebooks/notebook_utils.py` — Shared notebook setup/helpers.
+- `examples/1odi.pdb`, `examples/3lpk.pdb` — Example structures for quick testing/demo.
+- `visualizations/*.jpg|*.png` — Figures used in README/documentation.
+
 
 ## Citation
 
