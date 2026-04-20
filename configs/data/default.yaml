@@ -12,6 +12,7 @@ global_node_subsample_size: 1.0
 sampling_strategy: fibonacci
 train_valid_split: ${train_valid_split}
 n_jobs: 30
+parallel_backend: threads
 batch_size: 32
 shuffle: true
 num_workers: 4
