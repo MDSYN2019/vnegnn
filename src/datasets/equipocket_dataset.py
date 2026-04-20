@@ -32,11 +32,13 @@ class EquipocketDataset(InMemoryDataset):
         protein_names: list[str],
         label="train",
         n_jobs: int = cpu_count() - 1,
+        parallel_backend: Literal["processes", "threads"] = "threads",
         force_reload: bool = False,
     ):
         self.protein_names = protein_names
         self.label = label
-        self.n_jobs = n_jobs
+        self.n_jobs = max(1, n_jobs)
+        self.parallel_backend = parallel_backend
 
         super().__init__(root, force_reload=force_reload)
         self.data, self.slices = torch.load(self.processed_paths[0], weights_only=False)
@@ -79,7 +81,12 @@ class EquipocketDataset(InMemoryDataset):
             "Starting parallel protein-to-graph conversion for %d proteins",
             len(self.raw_file_names),
         )
-        results = Parallel(n_jobs=self.n_jobs, verbose=1, timeout=None)(
+        results = Parallel(
+            n_jobs=self.n_jobs,
+            verbose=1,
+            timeout=None,
+            prefer=self.parallel_backend,
+        )(
             delayed(process_protein)(Path(f"{self.raw_dir}/{file_name}"))
             for file_name in tqdm(
                 self.raw_file_names,
@@ -137,6 +144,7 @@ class EquipocketDataModule(pl.LightningDataModule):
         root: str,
         train_valid_split: str,
         n_jobs: int = cpu_count() - 1,
+        parallel_backend: Literal["processes", "threads"] = "threads",
         batch_size: int = 64,
         shuffle: bool = True,
         num_workers: int = 0,
@@ -156,6 +164,17 @@ class EquipocketDataModule(pl.LightningDataModule):
         self.prefetch_factor = prefetch_factor
         self.force_reload = force_reload
         self.n_jobs = n_jobs
+        self.parallel_backend = parallel_backend
+
+    def _loader_runtime_kwargs(self) -> dict:
+        kwargs = {
+            "num_workers": self.num_workers,
+            "pin_memory": self.pin_memory,
+        }
+        if self.num_workers > 0:
+            kwargs["prefetch_factor"] = self.prefetch_factor
+            kwargs["persistent_workers"] = self.persistent_workers
+        return kwargs
 
     def _create_dataloader(
         self, mode: Literal["train", "valid", "coach420", "holo4k"]
@@ -191,13 +210,12 @@ class EquipocketDataModule(pl.LightningDataModule):
                 label=mode,
                 protein_names=complex_names,
                 n_jobs=self.n_jobs,
+                parallel_backend=self.parallel_backend,
                 force_reload=self.force_reload,
             ),
             batch_size=self.batch_size,
             shuffle=self.shuffle if mode == "train" else False,
-            num_workers=self.num_workers,
-            pin_memory=self.pin_memory,
-            prefetch_factor=self.prefetch_factor,
+            **self._loader_runtime_kwargs(),
         )
 
     @property
