@@ -166,6 +166,17 @@ class EquipocketDataModule(pl.LightningDataModule):
         self.n_jobs = n_jobs
         self.parallel_backend = parallel_backend
 
+    def _loader_runtime_kwargs(self) -> dict:
+        kwargs = {
+            "num_workers": self.num_workers,
+            "pin_memory": self.pin_memory,
+        }
+        if self.num_workers > 0:
+            kwargs["prefetch_factor"] = self.prefetch_factor
+            kwargs["persistent_workers"] = self.persistent_workers
+        return kwargs
+
+
     def _create_dataloader(
         self, mode: Literal["train", "valid", "coach420", "holo4k"]
     ) -> DataLoader:
@@ -205,9 +216,7 @@ class EquipocketDataModule(pl.LightningDataModule):
             ),
             batch_size=self.batch_size,
             shuffle=self.shuffle if mode == "train" else False,
-            num_workers=self.num_workers,
-            pin_memory=self.pin_memory,
-            prefetch_factor=self.prefetch_factor,
+            **self._loader_runtime_kwargs(),
         )
 
     @property
