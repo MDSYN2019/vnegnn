@@ -172,3 +172,6 @@ AGENTS.md
 exports/*
 
 .cursor
+
+# data
+configs/data/data/*
